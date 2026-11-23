@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: MIT
+# Builds and tests the plugin through its CMake presets and uploads each staged plugin folder.
+name: build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.preset }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows x86, the target the game ships, with both Windows compilers.
+          - preset: win32-msvc
+            os: windows-latest
+          - preset: win32-clang
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v7
+        with:
+          path: genonline-caster-plugin
+          persist-credentials: false
+
+      - name: Check out the plugin SDK
+        uses: actions/checkout@v7
+        with:
+          repository: community-outpost/genonline-plugin-sdk
+          ssh-key: ${{ secrets.SDK_DEPLOY_KEY }}
+          path: genonline-plugin-sdk
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake -S genonline-caster-plugin --preset ${{ matrix.preset }}
+
+      - name: Build
+        working-directory: genonline-caster-plugin
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        working-directory: genonline-caster-plugin
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Upload the staged plugin folder
+        uses: actions/upload-artifact@v7
+        with:
+          name: genonline_caster-${{ matrix.preset }}
+          path: genonline-caster-plugin/build/${{ matrix.preset }}/plugins/genonline_caster/
+          if-no-files-found: error
+          retention-days: 14
